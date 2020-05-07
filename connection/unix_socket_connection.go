@@ -12,11 +12,11 @@ type UnixSocketConnection struct {
 	dataHandler DataHandler
 }
 
-func NewUnixSocketConnection(socketPath string) UnixSocketConnection {
-	return UnixSocketConnection{socketPath: socketPath}
+func NewUnixSocketConnection(socketPath string) *UnixSocketConnection {
+	return &UnixSocketConnection{socketPath: socketPath}
 }
 
-func (connection UnixSocketConnection) SetupConnection() error {
+func (connection *UnixSocketConnection) SetupConnection() error {
 	client, err := net.Dial("unix", connection.socketPath)
 	if err != nil {
 		return err
@@ -28,7 +28,7 @@ func (connection UnixSocketConnection) SetupConnection() error {
 	return nil
 }
 
-func (connection UnixSocketConnection) CloseConnection() error {
+func (connection *UnixSocketConnection) CloseConnection() error {
 	if connection.client == nil {
 		return errors.New("client isn't initialized yet. Did you forget to call SetupConnection()")
 	}
@@ -41,7 +41,7 @@ func (connection UnixSocketConnection) CloseConnection() error {
 	return nil
 }
 
-func (connection UnixSocketConnection) Send(data []byte) error {
+func (connection *UnixSocketConnection) Send(data []byte) error {
 	if connection.client == nil {
 		return errors.New("client isn't initialized yet. Did you forget to call SetupConnection()")
 	}
@@ -54,11 +54,11 @@ func (connection UnixSocketConnection) Send(data []byte) error {
 	return nil
 }
 
-func (connection UnixSocketConnection) SetOnDataHandler(dataHandler DataHandler) {
+func (connection *UnixSocketConnection) SetOnDataHandler(dataHandler DataHandler) {
 	connection.dataHandler = dataHandler
 }
 
-func (connection UnixSocketConnection) readLoop() {
+func (connection *UnixSocketConnection) readLoop() {
 	reader := bufio.NewReader(connection.client)
 	for {
 		line, err := reader.ReadBytes(byte('\n'))
@@ -69,7 +69,7 @@ func (connection UnixSocketConnection) readLoop() {
 	}
 }
 
-func (connection UnixSocketConnection) onData(data []byte) {
+func (connection *UnixSocketConnection) onData(data []byte) {
 	if connection.dataHandler != nil {
 		connection.dataHandler(data)
 	}

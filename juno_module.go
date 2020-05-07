@@ -22,6 +22,10 @@ type HookListType struct {
 	sync.RWMutex
 	m map[string][]func(interface{})
 }
+type MutexBool struct {
+	sync.RWMutex
+	value bool
+}
 
 type JunoModule struct {
 	connection    connection.BaseConnection
@@ -30,7 +34,7 @@ type JunoModule struct {
 	functions     FunctionListType
 	hookListeners HookListType
 	messageBuffer []byte
-	registered    bool
+	registered    MutexBool
 }
 
 func Default(connectionPath string) JunoModule {
@@ -63,7 +67,9 @@ func NewJunoModule(protocol protocol.BaseProtocol, connection connection.BaseCon
 			m: make(map[string][]func(interface{})),
 		},
 		messageBuffer: []byte{},
-		registered:    false,
+		registered: MutexBool{
+			value: false,
+		},
 	}
 }
 
@@ -80,20 +86,20 @@ func (module *JunoModule) Initialize(moduleId, version string, dependencies map[
 
 func (module *JunoModule) DeclareFunction(fnName string, fn func(map[string]interface{}) interface{}) (chan interface{}, error) {
 	module.functions.Lock()
-	defer module.hookListeners.Unlock()
 	module.functions.m[fnName] = fn
+	module.functions.Unlock()
 	return module.sendRequest(
 		protocol.DeclareFunction(module.protocol, fnName),
 	)
 }
 
-func (module *JunoModule) callFunction(fnName string, args map[string]interface{}) (chan interface{}, error) {
+func (module *JunoModule) CallFunction(fnName string, args map[string]interface{}) (chan interface{}, error) {
 	return module.sendRequest(
 		protocol.CallFunction(module.protocol, fnName, args),
 	)
 }
 
-func (module *JunoModule) registerHook(hook string, cb func(interface{})) (chan interface{}, error) {
+func (module *JunoModule) RegisterHook(hook string, cb func(interface{})) (chan interface{}, error) {
 	module.hookListeners.Lock()
 	defer module.hookListeners.Unlock()
 	if module.hookListeners.m[hook] != nil {
@@ -106,18 +112,19 @@ func (module *JunoModule) registerHook(hook string, cb func(interface{})) (chan 
 	)
 }
 
-func (module *JunoModule) triggerHook(hook string) (chan interface{}, error) {
+func (module *JunoModule) TriggerHook(hook string) (chan interface{}, error) {
 	return module.sendRequest(
 		protocol.TriggerHook(module.protocol, hook),
 	)
 }
 
-func (module *JunoModule) close() error {
+func (module *JunoModule) Close() error {
 	return module.connection.CloseConnection()
 }
 
 func (module *JunoModule) sendRequest(message models.BaseMessage) (chan interface{}, error) {
-	if message.GetType() == request_types.RegisterModuleRequest && module.registered {
+	module.registered.RLock()
+	if message.GetType() == request_types.RegisterModuleRequest && module.registered.value {
 		return nil, errors.New("module already registered")
 	}
 
@@ -125,7 +132,7 @@ func (module *JunoModule) sendRequest(message models.BaseMessage) (chan interfac
 	if err != nil {
 		return nil, err
 	}
-	if module.registered || message.GetType() == request_types.RegisterModuleRequest {
+	if module.registered.value || message.GetType() == request_types.RegisterModuleRequest {
 		err = module.connection.Send(encoded)
 		if err != nil {
 			return nil, err
@@ -133,11 +140,12 @@ func (module *JunoModule) sendRequest(message models.BaseMessage) (chan interfac
 	} else {
 		module.messageBuffer = append(module.messageBuffer, encoded...)
 	}
+	module.registered.RUnlock()
 
 	module.requests.Lock()
-	defer module.requests.Unlock()
 	channel := make(chan interface{})
 	module.requests.m[message.GetRequestId()] = channel
+	module.requests.Unlock()
 	return channel, nil
 }
 
@@ -167,7 +175,7 @@ func (module *JunoModule) onDataHandler(data []byte) {
 		}
 	case request_types.TriggerHookResponse:
 		{
-			value = module.executeHookTriggered(response.(models.TriggerHookRequest))
+			value = module.executeHookTriggered(response.(models.TriggerHookResponse))
 			break
 		}
 	case request_types.FunctionCallRequest:
@@ -183,11 +191,11 @@ func (module *JunoModule) onDataHandler(data []byte) {
 	}
 
 	module.requests.Lock()
-	defer module.requests.Unlock()
 	if module.requests.m[response.GetRequestId()] != nil {
 		module.requests.m[response.GetRequestId()] <- value
 		delete(module.requests.m, response.GetRequestId())
 	}
+	module.requests.Unlock()
 }
 
 func (module *JunoModule) executeFunctionCall(request models.FunctionCallRequest) bool {
@@ -213,18 +221,22 @@ func (module *JunoModule) executeFunctionCall(request models.FunctionCallRequest
 	}
 }
 
-func (module *JunoModule) executeHookTriggered(request models.TriggerHookRequest) bool {
+func (module *JunoModule) executeHookTriggered(request models.TriggerHookResponse) bool {
 	if &request.Hook != nil {
 		module.hookListeners.RLock()
 		defer module.hookListeners.RUnlock()
 		// Hook triggered by another module.
 		if request.Hook == `juno.activated` {
-			module.registered = true
+			module.registered.Lock()
+			module.registered.value = true
 			if module.messageBuffer != nil {
 				_ = module.connection.Send(module.messageBuffer)
 			}
+			module.registered.Unlock()
 		} else if request.Hook == `juno.deactivated` {
-			module.registered = false
+			module.registered.Lock()
+			module.registered.value = false
+			module.registered.Unlock()
 		} else if module.hookListeners.m[request.Hook] != nil {
 			for _, listener := range module.hookListeners.m[request.Hook] {
 				listener(nil)
@@ -236,4 +248,3 @@ func (module *JunoModule) executeHookTriggered(request models.TriggerHookRequest
 		return true
 	}
 }
-

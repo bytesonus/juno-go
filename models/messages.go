@@ -103,6 +103,7 @@ func (message TriggerHookRequest) GetRequestId() string {
 
 type TriggerHookResponse struct {
 	RequestId string `json:"requestId"`
+	Hook string `json:"hook"`
 }
 
 func (message TriggerHookResponse) GetType() uint64 {

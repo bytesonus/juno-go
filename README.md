@@ -21,28 +21,29 @@ import (
 )
 
 func main() {
-    module := juno.Default("./path/to/juno.sock")
-    channel, err := module.Initialize("module-name", "1.0.0");
-    if err != nil {
-        return
-    }
-    _ := <-channel // Wait for initialize to complete
-    fmt.Println("Initialized!")
+	module := juno.Default("./path/to/juno.sock")
+	channel, err := module.Initialize("module-name", "1.0.0", nil)
+	if err != nil {
+		panic(err)
+	}
+	_ = <-channel // Wait for initialize to complete
+	fmt.Println("Initialized!")
 
-    channel, err = module.DeclareFunction("printHello", func (args map[string]interface{}) interface{} {
-        fmt.Println("Hello")
-        return nil
-    })
-    if err != nil {
-        return
-    }
-    _ = <-channel // Wait for declaration to complete
+	channel, err = module.DeclareFunction("printHello", func (args map[string]interface{}) interface{} {
+		fmt.Println("Hello")
+		return nil
+	})
+	if err != nil {
+		panic(err)
+	}
+	_ = <-channel // Wait for declaration to complete
+	fmt.Println("Declaration!")
 
-    channel, err = module.CallFunction("module2.printHelloWorld")
-    if err != nil {
-        return
-    }
-    response := <-channel // Wait for declaration to complete
-    fmt.Println(response)
+	channel, err = module.CallFunction("module2.printHelloWorld", nil)
+	if err != nil {
+		panic(err)
+	}
+	response := <-channel // Wait for declaration to complete
+	fmt.Println(response)
 }
 ```
