@@ -7,11 +7,21 @@ import (
 	"juno-go/protocol"
 	"juno-go/utils/request_types"
 	"net"
+	"sync"
 )
 
-type RequestListType map[string]chan interface{}
-type FunctionListType map[string]func(map[string]interface{}) interface{}
-type HookListType map[string][]func(interface{})
+type RequestListType struct {
+	sync.RWMutex
+	m map[string]chan interface{}
+}
+type FunctionListType struct {
+	sync.RWMutex
+	m map[string]func(map[string]interface{}) interface{}
+}
+type HookListType struct {
+	sync.RWMutex
+	m map[string][]func(interface{})
+}
 
 type JunoModule struct {
 	connection    connection.BaseConnection
@@ -41,51 +51,97 @@ func FromUnixSocket(socketPath string) JunoModule {
 
 func NewJunoModule(protocol protocol.BaseProtocol, connection connection.BaseConnection) JunoModule {
 	return JunoModule{
-		connection:    connection,
-		protocol:      protocol,
-		requests:      RequestListType{},
-		functions:     FunctionListType{},
-		hookListeners: HookListType{},
+		connection: connection,
+		protocol:   protocol,
+		requests: RequestListType{
+			m: make(map[string]chan interface{}),
+		},
+		functions: FunctionListType{
+			m: make(map[string]func(map[string]interface{}) interface{}),
+		},
+		hookListeners: HookListType{
+			m: make(map[string][]func(interface{})),
+		},
 		messageBuffer: []byte{},
 		registered:    false,
 	}
 }
 
-func (module JunoModule) Initialize(moduleId, version string, dependencies map[string]string) error {
+func (module *JunoModule) Initialize(moduleId, version string, dependencies map[string]string) (chan interface{}, error) {
 	err := module.connection.SetupConnection()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	module.connection.SetOnDataHandler(module.onDataHandler)
 
 	request := protocol.Initialize(module.protocol, moduleId, version, dependencies)
-	err = module.sendRequest(request)
-	if err != nil {
-		return err
-	}
-
-	module.registered = true
-	return nil
+	return module.sendRequest(request)
 }
 
-func (module JunoModule) sendRequest(message models.BaseMessage) error {
+func (module *JunoModule) DeclareFunction(fnName string, fn func(map[string]interface{}) interface{}) (chan interface{}, error) {
+	module.functions.Lock()
+	defer module.hookListeners.Unlock()
+	module.functions.m[fnName] = fn
+	return module.sendRequest(
+		protocol.DeclareFunction(module.protocol, fnName),
+	)
+}
+
+func (module *JunoModule) callFunction(fnName string, args map[string]interface{}) (chan interface{}, error) {
+	return module.sendRequest(
+		protocol.CallFunction(module.protocol, fnName, args),
+	)
+}
+
+func (module *JunoModule) registerHook(hook string, cb func(interface{})) (chan interface{}, error) {
+	module.hookListeners.Lock()
+	defer module.hookListeners.Unlock()
+	if module.hookListeners.m[hook] != nil {
+		module.hookListeners.m[hook] = append(module.hookListeners.m[hook], cb)
+	} else {
+		module.hookListeners.m[hook] = []func(interface{}){cb}
+	}
+	return module.sendRequest(
+		protocol.RegisterHook(module.protocol, hook),
+	)
+}
+
+func (module *JunoModule) triggerHook(hook string) (chan interface{}, error) {
+	return module.sendRequest(
+		protocol.TriggerHook(module.protocol, hook),
+	)
+}
+
+func (module *JunoModule) close() error {
+	return module.connection.CloseConnection()
+}
+
+func (module *JunoModule) sendRequest(message models.BaseMessage) (chan interface{}, error) {
 	if message.GetType() == request_types.RegisterModuleRequest && module.registered {
-		return errors.New("module already registered")
+		return nil, errors.New("module already registered")
 	}
 
 	encoded, err := module.protocol.Encode(message)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if module.registered || message.GetType() == request_types.RegisterModuleRequest {
-		return module.connection.Send(encoded)
+		err = module.connection.Send(encoded)
+		if err != nil {
+			return nil, err
+		}
 	} else {
 		module.messageBuffer = append(module.messageBuffer, encoded...)
 	}
-	return nil
+
+	module.requests.Lock()
+	defer module.requests.Unlock()
+	channel := make(chan interface{})
+	module.requests.m[message.GetRequestId()] = channel
+	return channel, nil
 }
 
-func (module JunoModule) onDataHandler(data []byte) {
+func (module *JunoModule) onDataHandler(data []byte) {
 	response := module.protocol.Decode(data)
 	var value interface{}
 	switch response.GetType() {
@@ -125,37 +181,52 @@ func (module JunoModule) onDataHandler(data []byte) {
 			break
 		}
 	}
-	module.requests[response.GetRequestId()] <- value
-	delete(module.requests, response.GetRequestId())
+
+	module.requests.Lock()
+	defer module.requests.Unlock()
+	if module.requests.m[response.GetRequestId()] != nil {
+		module.requests.m[response.GetRequestId()] <- value
+		delete(module.requests.m, response.GetRequestId())
+	}
 }
 
-func (module JunoModule) executeFunctionCall(request models.FunctionCallRequest) bool {
-	if module.functions[request.Function] != nil {
-		res := module.functions[request.Function](request.Arguments)
+func (module *JunoModule) executeFunctionCall(request models.FunctionCallRequest) bool {
+	module.functions.RLock()
+	defer module.functions.RUnlock()
+	if module.functions.m[request.Function] != nil {
+		res := module.functions.m[request.Function](request.Arguments)
 		if res.(chan interface{}) != nil {
 			res = <-res.(chan interface{})
 		}
-		err := module.sendRequest(models.FunctionCallResponse{
+		channel, err := module.sendRequest(models.FunctionCallResponse{
 			RequestId: request.RequestId,
 			Data:      res,
 		})
-		return err == nil
+		if err != nil {
+			return false
+		}
+		_ = <-channel
+		return true
 	} else {
 		// Function wasn't found in the module.
 		return false
 	}
 }
 
-func (module JunoModule) executeHookTriggered(request models.TriggerHookRequest) bool {
+func (module *JunoModule) executeHookTriggered(request models.TriggerHookRequest) bool {
 	if &request.Hook != nil {
+		module.hookListeners.RLock()
+		defer module.hookListeners.RUnlock()
 		// Hook triggered by another module.
 		if request.Hook == `juno.activated` {
 			module.registered = true
 			if module.messageBuffer != nil {
 				_ = module.connection.Send(module.messageBuffer)
 			}
-		} else if module.hookListeners[request.Hook] != nil {
-			for _, listener := range module.hookListeners[request.Hook] {
+		} else if request.Hook == `juno.deactivated` {
+			module.registered = false
+		} else if module.hookListeners.m[request.Hook] != nil {
+			for _, listener := range module.hookListeners.m[request.Hook] {
 				listener(nil)
 			}
 		}
