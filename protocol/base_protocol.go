@@ -34,10 +34,11 @@ func RegisterHook(protocol BaseProtocol, hook string) models.BaseMessage {
 	}
 }
 
-func TriggerHook(protocol BaseProtocol, hook string) models.BaseMessage {
+func TriggerHook(protocol BaseProtocol, hook string, data interface{}) models.BaseMessage {
 	return models.TriggerHookRequest{
 		RequestId: GenerateRequestId(protocol.GetModuleId()),
 		Hook:      hook,
+		Data:      data,
 	}
 }
 

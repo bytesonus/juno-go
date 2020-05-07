@@ -112,9 +112,9 @@ func (module *JunoModule) RegisterHook(hook string, cb func(interface{})) (chan 
 	)
 }
 
-func (module *JunoModule) TriggerHook(hook string) (chan interface{}, error) {
+func (module *JunoModule) TriggerHook(hook string, data interface{}) (chan interface{}, error) {
 	return module.sendRequest(
-		protocol.TriggerHook(module.protocol, hook),
+		protocol.TriggerHook(module.protocol, hook, data),
 	)
 }
 

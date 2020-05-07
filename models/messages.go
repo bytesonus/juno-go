@@ -91,6 +91,7 @@ func (message RegisterHookResponse) GetRequestId() string {
 type TriggerHookRequest struct {
 	RequestId string `json:"requestId"`
 	Hook string `json:"hook"`
+	Data interface{} `json:"data"`
 }
 
 func (message TriggerHookRequest) GetType() uint64 {
