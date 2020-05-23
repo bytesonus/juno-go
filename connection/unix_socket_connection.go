@@ -65,7 +65,7 @@ func (connection *UnixSocketConnection) readLoop() {
 		if err != nil {
 			return
 		}
-		connection.onData(line)
+		go connection.onData(line)
 	}
 }
 
