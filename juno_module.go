@@ -2,12 +2,13 @@ package juno_go
 
 import (
 	"errors"
-	"juno-go/connection"
-	"juno-go/models"
-	"juno-go/protocol"
-	"juno-go/utils/request_types"
 	"net"
 	"sync"
+
+	"github.com/bytesonus/juno-go/connection"
+	"github.com/bytesonus/juno-go/models"
+	"github.com/bytesonus/juno-go/protocol"
+	"github.com/bytesonus/juno-go/utils/request_types"
 )
 
 type RequestListType struct {

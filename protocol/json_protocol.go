@@ -2,9 +2,12 @@ package protocol
 
 import (
 	"encoding/json"
-	"juno-go/models"
-	"juno-go/utils/request_keys"
-	"juno-go/utils/request_types"
+
+	"github.com/bytesonus/juno-go/utils/request_types"
+
+	"github.com/bytesonus/juno-go/utils/request_keys"
+
+	"github.com/bytesonus/juno-go/models"
 )
 
 type JsonProtocol struct {
@@ -262,4 +265,3 @@ func (protocol *JsonProtocol) GetModuleId() string {
 func NewJsonProtocol() *JsonProtocol {
 	return &JsonProtocol{moduleId: ""}
 }
-

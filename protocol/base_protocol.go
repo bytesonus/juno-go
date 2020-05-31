@@ -2,7 +2,7 @@ package protocol
 
 import (
 	"fmt"
-	"juno-go/models"
+	"github.com/bytesonus/juno-go/models"
 	"time"
 )
 

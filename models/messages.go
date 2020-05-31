@@ -1,7 +1,7 @@
 package models
 
 import (
-	"juno-go/utils/request_types"
+	"github.com/bytesonus/juno-go/utils/request_types"
 )
 
 type BaseMessage interface {
@@ -10,9 +10,9 @@ type BaseMessage interface {
 }
 
 type RegisterModuleRequest struct {
-	RequestId string `json:"requestId"`
-	ModuleId string `json:"moduleId"`
-	Version string `json:"version"`
+	RequestId    string            `json:"requestId"`
+	ModuleId     string            `json:"moduleId"`
+	Version      string            `json:"version"`
 	Dependencies map[string]string `json:"dependencies"`
 }
 
@@ -37,8 +37,8 @@ func (message RegisterModuleResponse) GetRequestId() string {
 }
 
 type FunctionCallRequest struct {
-	RequestId string `json:"requestId"`
-	Function string `json:"function"`
+	RequestId string                 `json:"requestId"`
+	Function  string                 `json:"function"`
 	Arguments map[string]interface{} `json:"arguments"`
 }
 
@@ -51,8 +51,8 @@ func (message FunctionCallRequest) GetRequestId() string {
 }
 
 type FunctionCallResponse struct {
-	RequestId string `json:"requestId"`
-	Data interface{} `json:"data"`
+	RequestId string      `json:"requestId"`
+	Data      interface{} `json:"data"`
 }
 
 func (message FunctionCallResponse) GetType() uint64 {
@@ -65,7 +65,7 @@ func (message FunctionCallResponse) GetRequestId() string {
 
 type RegisterHookRequest struct {
 	RequestId string `json:"requestId"`
-	Hook string `json:"hook"`
+	Hook      string `json:"hook"`
 }
 
 func (message RegisterHookRequest) GetType() uint64 {
@@ -89,9 +89,9 @@ func (message RegisterHookResponse) GetRequestId() string {
 }
 
 type TriggerHookRequest struct {
-	RequestId string `json:"requestId"`
-	Hook string `json:"hook"`
-	Data interface{} `json:"data"`
+	RequestId string      `json:"requestId"`
+	Hook      string      `json:"hook"`
+	Data      interface{} `json:"data"`
 }
 
 func (message TriggerHookRequest) GetType() uint64 {
@@ -104,7 +104,7 @@ func (message TriggerHookRequest) GetRequestId() string {
 
 type TriggerHookResponse struct {
 	RequestId string `json:"requestId"`
-	Hook string `json:"hook"`
+	Hook      string `json:"hook"`
 }
 
 func (message TriggerHookResponse) GetType() uint64 {
@@ -117,7 +117,7 @@ func (message TriggerHookResponse) GetRequestId() string {
 
 type DeclareFunctionRequest struct {
 	RequestId string `json:"requestId"`
-	Function string `json:"function"`
+	Function  string `json:"function"`
 }
 
 func (message DeclareFunctionRequest) GetType() uint64 {
@@ -130,7 +130,7 @@ func (message DeclareFunctionRequest) GetRequestId() string {
 
 type DeclareFunctionResponse struct {
 	RequestId string `json:"requestId"`
-	Function string `json:"function"`
+	Function  string `json:"function"`
 }
 
 func (message DeclareFunctionResponse) GetType() uint64 {
@@ -143,7 +143,7 @@ func (message DeclareFunctionResponse) GetRequestId() string {
 
 type ErrorMessage struct {
 	RequestId string `json:"requestId"`
-	Error uint32 `json:"error"`
+	Error     uint32 `json:"error"`
 }
 
 func (message ErrorMessage) GetType() uint64 {
